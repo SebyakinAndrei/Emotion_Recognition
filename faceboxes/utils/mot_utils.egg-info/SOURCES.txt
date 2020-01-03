@@ -1,0 +1,6 @@
+build.py
+mot_utils.egg-info/PKG-INFO
+mot_utils.egg-info/SOURCES.txt
+mot_utils.egg-info/dependency_links.txt
+mot_utils.egg-info/top_level.txt
+nms/cpu_nms.pyx
