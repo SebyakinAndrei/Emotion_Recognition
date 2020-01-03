@@ -75,8 +75,6 @@ class FaceDataset(Dataset):
 class ImgAugTransform:
     def __init__(self):
         self.aug = iaa.Sequential([
-            #iaa.Scale((128, 128)),
-            #iaa.MotionBlur(k=(3, 7), angle=(0, 360)),
             iaa.OneOf([iaa.GaussianBlur(sigma=(0, 0.4))]),
             iaa.Fliplr(0.5),
             iaa.Affine(rotate=(-20, 20), mode='symmetric'),
@@ -96,16 +94,6 @@ class ImgAugTransform:
 
 
 def create_model(*args, arch='resnet18', debug=True):
-    #num_conv_filters = 128
-    #num_classes = 8
-    #num_cells = 6
-    #model = NetworkImageNet(num_conv_filters, num_classes, num_cells, False, PNASNet)
-    #model.drop_path_prob = 0
-    #model.eval()
-    #model = models.resnet18()
-    #num_ftrs = model.fc.in_features
-    #model.fc = nn.Linear(num_ftrs, 8)
-    #model = nn.Sequential(model, nn.Softmax())
     model = emotion_models[arch](*args).cuda()
     summary(model, input_size=(3, 128, 128))
     return model
@@ -133,10 +121,8 @@ def eval_model(model, optimizer, criterion, testloader, fasteval=False, steps_fa
     top1 = AverageMeter('Acc@1', ':6.2f')
     top3 = AverageMeter('Acc@5', ':6.2f')
 
-    model.eval()  # Set model to evaluate mode
+    model.eval()
 
-    #running_loss = 0.0
-    #running_corrects = 0
     if confusion_matrix:
         y_true, y_pred = [], []
 
@@ -156,7 +142,6 @@ def eval_model(model, optimizer, criterion, testloader, fasteval=False, steps_fa
             optimizer.zero_grad()
 
             # forward
-            # track history if only in train
             outputs = model(inputs)
             if type(outputs) == tuple:
                 outputs, _ = outputs
@@ -165,7 +150,6 @@ def eval_model(model, optimizer, criterion, testloader, fasteval=False, steps_fa
             if confusion_matrix:
                 y_pred += preds.to(torch.int16).flatten().tolist()
                 y_true += labels.to(torch.int16).flatten().tolist()
-            # print(outputs)
             loss = criterion(outputs, labels)
 
             if debug:
@@ -177,10 +161,6 @@ def eval_model(model, optimizer, criterion, testloader, fasteval=False, steps_fa
             losses.update(loss.detach().item(), inputs.size(0))
             top1.update(acc1[0], inputs.size(0))
             top3.update(acc3[0], inputs.size(0))
-
-            ## statistics
-            #running_loss += loss.detach().item()
-            #running_corrects += torch.sum(preds == labels.data).item()
 
             torch.cuda.empty_cache()
             del loss, inputs, outputs, labels, preds
@@ -200,20 +180,6 @@ def eval_model(model, optimizer, criterion, testloader, fasteval=False, steps_fa
         plt.savefig('confusion_mat.png', dpi='figure', format='png')
         print('Done!')
 
-
-    #if fasteval:
-    #    total_loss = running_loss / steps_fasteval
-    #    total_acc = running_corrects / steps_fasteval
-    #else:
-    #    total_loss = running_loss / len(testloader)
-    #    total_acc = running_corrects / len(testloader)
-
-
-    #if fasteval:
-    #    print('Fast', end=' ')
-    #print('Validation Loss: {:.4f} Acc: {:.4f}'.format(total_loss, total_acc))
-    #
-    #return total_loss, total_acc
     return losses.avg, top1.avg, top3.avg
 
 
@@ -247,15 +213,8 @@ def train_model(model, criterion, optimizer, scheduler, trainloader, testloader,
 
         model.train()  # Set model to training mode
 
-        #running_loss = 0.0
-        #running_corrects = 0
-
         # Iterate over data.
         for step, (inputs, labels) in enumerate(ProgressIter(trainloader, enable_progress)):
-            #for i in range(16):
-            #    to_pil(inputs[i]).save('debug/'+str(step)+'_'+str(i)+'_'+dataset_labels[labels[i].item()]+'.png')
-
-            #print('Step:', step, end=' ')
             start = default_timer()
 
             inputs = inputs.to('cuda')
@@ -269,7 +228,6 @@ def train_model(model, criterion, optimizer, scheduler, trainloader, testloader,
             if type(outputs) == tuple:
                 outputs, _ = outputs
             preds = outputs.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            #print(outputs)
             loss = criterion(outputs, labels)
 
             # measure accuracy and record loss
@@ -283,20 +241,11 @@ def train_model(model, criterion, optimizer, scheduler, trainloader, testloader,
             optimizer.step()
 
             # statistics
-            #running_loss += loss.detach().item()
-            #running_corrects += torch.sum(preds == labels.data).item()
             del loss, inputs, outputs, labels, preds
-
-            #print(default_timer() - start)
 
 
         print('Validation time!')
         start = default_timer()
-
-        #total_loss = running_loss / log_every
-        #total_acc = running_corrects / (log_every * inputs.size(0))
-        #sw.add_scalar('train_loss', total_loss, cur_step)
-        #sw.add_scalar('train_acc', total_acc, cur_step)
 
         cur_step = epoch + resume_from
 
@@ -314,23 +263,15 @@ def train_model(model, criterion, optimizer, scheduler, trainloader, testloader,
         scheduler.step(val_loss)
         sw.add_scalar('learning_rate', get_lr(optimizer), cur_step)
 
-        #running_loss = 0.0
-        #running_corrects = 0
-
         # deep copy the model
         if val_top1 > best_acc:
             best_acc = val_top1
             best_model = copy.deepcopy(model.state_dict())
-            #torch.save(model.state_dict(), 'models/train/emotion_model_{}.pth'.format(cur_step))
 
         print('Done in', default_timer() - start)
 
         torch.save(model.state_dict(), 'models/train/emotion_model_epoch_{}.pth'.format(cur_step))
         torch.cuda.empty_cache()
-
-        #val_loss, val_acc = eval_model(model, optimizer, criterion, testloader, fasteval=False)
-        #sw.add_scalar('val_loss', val_loss, epoch)
-        #sw.add_scalar('val_acc', val_acc, epoch)
 
 
 
@@ -340,7 +281,6 @@ def train_model(model, criterion, optimizer, scheduler, trainloader, testloader,
     print('Best val Acc: {:4f}'.format(best_acc))
 
     # load best model weights
-    #model.load_state_dict(best_model)
     return best_model
 
 
@@ -366,17 +306,6 @@ def main(resume_from=None, test_only=False, enable_progress=True, imsize=128, co
     testset = FaceDataset(df_val, subdir='val', steps=len(df_val)*batch_size, imsize=imsize)
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=8)
 
-    """print('Testing loaders...')
-    print('Len:', len(trainloader), len(testloader))
-    start = default_timer()
-    for i, (inputs, labels) in enumerate(trainloader):
-        print(default_timer() - start)
-        start = default_timer()
-        # print(inputs, labels)
-        # to_pil(inputs[0]).show()
-        # print(i, dataset_labels[labels[0].item()])
-        if i == 4:
-            break"""
 
     torch.cuda.empty_cache()
 
